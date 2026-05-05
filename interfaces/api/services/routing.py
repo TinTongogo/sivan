@@ -67,29 +67,42 @@ def get_routing_stats(db_path: str | Path) -> dict[str, Any]:
             "SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as success_count "
             "FROM routing_decisions GROUP BY routing_strategy ORDER BY total_decisions DESC"
         )
-        by_strategy = {
-            r["routing_strategy"]: {
+        strategy_rows = cursor.fetchall()
+        # 从 strategy_performance 表读取权重
+        cursor.execute("SELECT strategy_name, weight FROM strategy_performance")
+        sp_weights = {r["strategy_name"]: r["weight"] for r in cursor.fetchall()}
+        by_strategy = {}
+        for r in strategy_rows:
+            sname = r["routing_strategy"]
+            by_strategy[sname] = {
                 "total_decisions": r["total_decisions"], "avg_confidence": r["avg_confidence"] or 0,
                 "avg_execution_time_ms": r["avg_execution_time_ms"] or 0,
                 "success_rate": r["success_count"] / r["total_decisions"] if r["total_decisions"] > 0 else 0,
-                "weight": 0.25,
+                "weight": sp_weights.get(sname, 0.25),
             }
-            for r in cursor.fetchall()
-        }
 
-        cursor.execute(
-            "SELECT task_description, selected_agent, routing_strategy, confidence_score, status, execution_time_ms, created_at "
-            "FROM routing_decisions ORDER BY created_at DESC LIMIT 10"
-        )
-        recent_decisions = [
-            {"task": r["task_description"], "agent": r["selected_agent"], "strategy": r["routing_strategy"],
-             "confidence": r["confidence_score"], "status": r["status"], "time": r["execution_time_ms"], "timestamp": r["created_at"]}
-            for r in cursor.fetchall()
-        ]
+        # 从 user_feedback 表读取真实反馈统计
+        cursor.execute("SELECT COUNT(*) as total FROM user_feedback")
+        total_feedback = cursor.fetchone()["total"] or 0
+        correct_rate = 0.0
+        avg_rating = 0.0
+        if total_feedback > 0:
+            cursor.execute(
+                "SELECT SUM(CASE WHEN feedback_type = 'correct' THEN 1 ELSE 0 END) as correct_count, "
+                "AVG(COALESCE(rating, 0)) as avg_rating FROM user_feedback"
+            )
+            fb = cursor.fetchone()
+            correct_rate = (fb["correct_count"] / total_feedback) if fb and total_feedback > 0 else 0.0
+            avg_rating = fb["avg_rating"] if fb and fb["avg_rating"] else 0.0
+
         conn.close()
         return {
             "total": total_stats, "by_agent": by_agent, "by_strategy": by_strategy,
-            "feedback": {"total_feedback": 50, "correct_rate": 0.8, "avg_rating": 4.5},
+            "feedback": {
+                "total_feedback": total_feedback,
+                "correct_rate": correct_rate,
+                "avg_rating": round(avg_rating, 2),
+            },
         }
     except Exception as e:
         return {"error": str(e)}

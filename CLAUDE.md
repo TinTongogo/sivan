@@ -4,517 +4,139 @@
 
 ## 项目概述
 
-**Sivan** 是一个复杂的 AI 智能体团队管理系统，通过 69 个已定义技能协调 18 个专业智能体。系统使用 Orchestrator（乐团指挥）分解复杂任务并将其路由到适当的智能体，通过契约文件实现智能体间协作。内置 AgentResolver 动态编排引擎，支持 LLM 按需组建 squad 并自动解析/创建智能体。
+**Sivan** — AI 智能体团队管理系统。18 个专业智能体 × 69 个模块化技能，通过 DDD 四层架构（domain → infrastructure → application → interfaces）构建。核心能力：
 
-## 系统架构
+- **多策略路由系统**: 语义/ML/上下文感知/自适应 4 种路由策略协同，SQLite 持久化 + 反馈学习
+- **AgentResolver**: 3 阶段语义匹配（精确→归一化→IDF 加权），动态创建/解析智能体
+- **契约协作**: 智能体间通过带版本管理的契约文件通信
+- **Squad 编排**: 多阶段执行引擎，支持 HITL 逐阶段推进
+- **管理控制台**: FastAPI Web 界面 + FastMCP 3.x 服务器
 
-### 核心组件
-
-1. **智能体** (`agents/`): 18 个具有明确定义角色、职责和约束的专业 AI 智能体
-   - 每个智能体都有 Markdown 文件，包含：名称、显示名称、版本、核心职责、退出标准、反模式警示、可用技能、工具权限和禁止行为
-   - 关键智能体：orchestrator（任务路由）、po（产品负责人）、architect（架构师）、be-dev（后端工程师）、fe-dev（前端工程师）、devops（运维工程师）、security-auditor（安全审计师）、qa（质量保证），以及各领域 AI 工程师
-
-2. **技能** (`skills/{name}/SKILL.md`): 69 个模块化能力，智能体可以调用
-   - 每个技能包含：名称、描述、参数提示、允许工具和实现细节
-   - 按领域组织：软件工程、前端/移动端、AI/LLM、数据/MLOps、多媒体
-
-3. **产品级路由系统**: 基于SQLite数据库的多策略智能路由系统，包含：
-   - **语义路由器**: 中文分词 + 关键词匹配 + 同义词扩展
-   - **ML路由器**: 基于scikit-learn的文本分类和意图识别
-   - **上下文感知路由器**: 多维度上下文分析（任务复杂度、领域、用户专业水平等）
-   - **自适应路由器**: 动态权重调整，基于历史表现优化路由策略
-   - **路由领域服务** (`RoutingService`): 统一管理所有路由策略，支持策略切换和综合分析
-   - **SQLite数据库**: 持久化存储路由决策、候选得分、用户反馈和性能指标
-
-4. **契约协作机制**: 基于SQLite数据库的智能体间协作系统
-   - **数据库存储**: 4个核心表（contracts, contract_tags, contract_dependencies, contract_versions）
-   - **版本控制**: 完整的版本历史跟踪，支持回滚和审计
-   - **依赖管理**: 契约间依赖关系管理，确保协作一致性
-   - **事件通知**: 基于观察者模式的事件发布/订阅机制
-   - **契约类型**: global（全局）、api（接口）、ui（界面）、data（数据）、model（模型）
-   - **状态管理**: draft（草稿）、reviewed（已审核）、approved（已批准）、deprecated（已废弃）
-
-5. **Token成本监控**: 实时Token使用跟踪和成本管理系统
-   - **使用记录**: 记录每次LLM调用的Token消耗和成本
-   - **成本计算**: 支持多种模型定价（Claude、GPT系列等）
-   - **预算管理**: 每日预算设置、使用监控、超限警报
-   - **统计分析**: 按智能体、模型、时间维度统计分析
-
-6. **AgentResolver 动态编排引擎**: 智能体名称解析与自动创建
-   - **3阶段语义匹配**: 精确匹配 → 归一化匹配 → IDF加权描述匹配（BFS传递缩写展开）
-   - **创建防护**: 泛称特异性检查 + SRP职责重叠检查，宁缺毋滥
-   - **技能继承**: 基于角色相似度自动匹配最相关技能（top-k 防超级单体）
-
-7. **管理控制台**: 基于FastAPI的Web管理界面
-   - **仪表板**: 系统状态概览、实时监控
-   - **智能体管理**: 智能体列表查看、状态管理
-   - **契约管理**: 契约浏览、搜索、状态更新
-   - **Token统计**: Token使用分析、成本报告
-   - **路由分析**: 路由决策统计、性能分析
-   - **技能管理**: 69个技能同步、搜索和详情查看
-   - **Squad管理**: Squad CRUD、执行编排、进度追踪
-   - **周报管理**: 周报生成、查看、发布
-   - **项目隔离**: 项目CRUD、知识库关联
-   - **API接口**: 完整的RESTful API，支持数据导出
-
-### 开发工作流
-
-系统遵循 5 阶段实施路线图，**所有阶段已完成**：
-
-1. **第一阶段**: 智能体 Prompt 定义（18 个智能体）✅ 已完成
-2. **第二阶段**: 技能定义和维护人指定（69 项技能）✅ 已完成  
-3. **第三阶段**: 产品级路由系统 + 契约协作机制实现 ✅ 已完成
-   - ✅ 语义路由器（中文分词 + 关键词匹配 + 同义词扩展）
-   - ✅ ML路由器（scikit-learn TF-IDF + 集成分类器 + 模型持久化）
-   - ✅ 上下文感知路由器（8维度上下文分析 + 智能体画像）
-   - ✅ 自适应路由器（动态权重调整 + 反馈学习）
-   - ✅ SQLite数据库存储（6个表，完整分析功能）
-   - ✅ 集成路由（`RoutingService` 统一管理所有策略 + 策略切换）
-   - ✅ MCP服务器集成（14个工具，完整路由分析）
-4. **第四阶段**: 轻量监控 + 管理控制台基础功能 ✅ 已完成
-   - ✅ 智能体间契约协作系统（SQLite数据库存储）
-   - ✅ Token统计看板（成本监控和预算管理）
-   - ✅ 完整协作流程测试验证
-   - ✅ 管理控制台前端（FastAPI Web界面）
-   - ✅ 技能管理模块（69个技能同步和管理）
-   - ✅ 统一数据库架构（sivan.db整合所有数据）
-5. **第五阶段**: Squad 可视化编排 + 效果评估周报 ✅ 已完成
-   - ✅ Squad CRUD（创建、查询、更新、删除）
-   - ✅ Squad执行引擎（多阶段编排 + 进度追踪）
-   - ✅ 执行记录与详情查询
-   - ✅ 周报生成与管理（基于Squad执行数据）
-   - ✅ 管理控制台Squad/周报管理页面
-   - ✅ 统一导航风格（所有页面使用侧边栏）
-
-## 快速开始
-
-### 1. 环境设置
-```bash
-# 安装依赖（使用 uv 进行 Python 包管理）
-uv sync
-
-# 首次运行会创建SQLite数据库和ML模型
-uv run python server.py
-```
-
-### 2. 验证安装
-服务器启动后应该显示：
-```
-✅ 系统初始化完成
-📊 智能体数量: 18
-📊 数据库文件: /path/to/data/sivan.db
-📊 ML模型目录: /path/to/data/models/
-🔧 可用MCP工具: 14
-📁 契约数据库: contracts 表
-🚀 路由系统: `RoutingService` + AdaptiveRouter（自适应权重）
-```
-
-### 3. 基本使用
-```bash
-# 测试路由系统（使用领域服务直接构造）
-uv run python -c "
-from domain.routing.service import RoutingService as DomainRoutingService
-from domain.routing.strategy import SemanticRouter, ContextAwareRouter, AdaptiveRouter
-
-svc = DomainRoutingService(strategies={}, default_strategy='adaptive')
-semantic = SemanticRouter()
-context = ContextAwareRouter()
-svc.register_strategy('semantic', semantic)
-svc.register_strategy('context_aware', context)
-adaptive = AdaptiveRouter(strategies={'semantic': semantic, 'context_aware': context})
-svc.register_strategy('adaptive', adaptive)
-svc.switch_strategy('adaptive')
-
-svc.add_agent('be-dev', ['后端开发', 'API设计', '数据库'])
-svc.add_agent('fe-dev', ['前端开发', 'UI组件', '响应式设计'])
-
-result = svc.route('设计用户登录API', {'domain': 'backend'})
-print(f'路由结果: {result}')
-
-# 获取所有策略的分析
-analysis = svc.analyze_task('设计用户登录API', {'domain': 'backend'})
-print(f'共识智能体: {analysis[\"consensus\"][\"agent\"]}')
-print(f'共识度: {analysis[\"consensus\"][\"agreement\"]:.0%}')
-"
-```
-
-### 4. 运行测试
-```bash
-# 运行测试套件
-uv run python -m pytest tests/ -v
-```
-
-## 开发命令
-
-### MCP 服务器开发
-系统使用 FastMCP 进行 Model Context Protocol 集成。关键文件：
-- `server.py`: 统一入口，支持 MCP 服务器（STDIO/HTTP）和管理控制台两种模式
-- 智能体作为 MCP 工具暴露给 Claude Desktop 集成
-- 路由决策存储在SQLite数据库中，支持完整的分析和反馈学习
-
-#### 启动服务器
-```bash
-# 直接运行（使用产品级路由系统）
-uv run python server.py
-
-# 服务器启动后会显示：
-# - 智能体数量: 18
-# - 数据库文件路径: data/sivan.db
-# - ML模型目录: data/models/
-# - 可用MCP工具: 14个
-# - 路由系统状态: RoutingService + AdaptiveRouter（自适应权重）
-# - 路由策略: 语义、ML、上下文感知、自适应（4种策略）
-```
-
-### 测试套件
-测试文件按类型组织在 `tests/` 目录（当前包含 41+ 个单元测试）：
+## 关键命令
 
 ```bash
-# 运行所有测试
-uv run python -m pytest tests/ -v
+uv sync              # 安装依赖（项目使用 uv 包管理器）
+uv run python server.py          # 启动 Web + MCP 综合服务
+uv run python server.py --mcp-stdio  # STDIO 模式（Claude Desktop）
 
-# 运行单元测试
-uv run python -m pytest tests/unit/ -v
+uv run python -m pytest tests/ -v   # 全部测试
+uv run python -m pytest tests/unit/ -v  # 单元测试
+uv run python -m pytest tests/unit/test_routing.py -v  # 单文件
 
-# 运行单个测试文件
-uv run python -m pytest tests/unit/test_routing.py  -v   # 路由策略测试
-uv run python -m pytest tests/unit/test_entity.py   -v   # 领域实体测试
-uv run python -m pytest tests/unit/test_settings.py -v   # 配置测试
+uvx ruff check .     # Lint 检查（line-length=120，规则集: E/F/W/I/N/UP/S）
+uvx ruff format .    # 自动格式化
+
+uv run alembic upgrade head       # 运行所有迁移
+uv run alembic revision -m "desc" # 创建新迁移
+uv run alembic current            # 查看当前版本
+uv run alembic history            # 查看历史
 ```
 
-### 智能体开发工作流
-1. **创建/修改智能体**: 按照模板结构编辑 `agents/{name}.md`
-2. **定义技能**: 从现有技能目录中选择可用技能
-3. **更新 Orchestrator 关键词**: 将智能体关键词添加到 Orchestrator 的路由表
-4. **测试集成**: 验证智能体出现在 MCP 工具中并正确响应
+## 架构关键模式
 
-## 关键模式和约束
+### 分层依赖规则
 
-### 智能体设计原则
-- **单一职责**: 每个智能体有明确、专注的领域
-- **退出标准**: 每个智能体都有必须在工作完成前满足的检查清单
-- **反模式意识**: 每个智能体都记录要避免的行为
-- **工具限制**: 智能体仅拥有其角色所需的权限（例如，orchestrator 不能写文件）
+依赖方向严格单向：**domain ← infrastructure ← application ← interfaces**
 
-### Orchestrator 约束
-- **不执行实际工作**: Orchestrator 只路由，从不执行实际工作
-- **无状态**: 无跨会话记忆
-- **无决策权**: 不确定时返回选项给用户选择
-- **资源锁感知**: 识别共享资源并强制串行执行
-- **失败透明**: 返回错误而不尝试修复
+- **domain/** — 纯 Python，零外部依赖。定义实体、值对象、仓库接口、领域服务
+- **infrastructure/** — 实现层。SQLAlchemy Core、LLM providers、ChromaDB、loguru。不反向导入 application 或 interfaces
+- **application/services/** — 编排层。注入具体仓库和服务，组合领域逻辑
+- **interfaces/** — 入口层。FastAPI + Jinja2 模板 + FastMCP
 
-### 技能实现
-- **单一职责**: 每项技能只做好一件事
-- **工具限制**: 技能声明可以使用的工具
-- **维护人指定**: 每项技能都有指定的维护智能体
+### 数据库访问模式
 
-## 文件结构约定
+**不使用 SQLAlchemy ORM**，使用 SQLAlchemy Core + 裸 SQL + `_CompatRow` 包装器。
 
 ```
-sivan/
-├── domain/                  # 领域层（7 个有界上下文）
-│   ├── agent/               entity, value_object, repository
-│   ├── memory/              entity, value_object, repository
-│   ├── contract/            entity, repository
-│   ├── skill/               entity, repository
-│   ├── routing/             entity, service, strategy
-│   ├── task/                entity
-│   └── knowledge_base/      entity, value_object, repository
-├── infrastructure/          # 基础设施层
-│   ├── persistence/         SQLAlchemy Core + 所有 Repository 实现
-│   ├── agents/              base.py, generic_agent.py, orchestrator.py
-│   ├── llm/                 Anthropic + OpenAI providers + factory
-│   ├── memory/              forgetting_curve, session_memory, context_injector
-│   ├── vector/              ChromaStore, KB ChromaStore
-│   ├── rag/                 document_processor, embedding
-│   └── logging/             setup, db_logger
-├── application/services/    # 应用服务层
-│   ├── agent_resolver.py    AgentResolver 动态编排引擎
-│   ├── agent_service.py
-│   ├── routing_service.py
-│   ├── contract_service.py
-│   ├── memory_service.py
-│   ├── skill_service.py
-│   ├── kb_service.py
-│   ├── project_service.py
-│   └── squad_matcher.py
-├── interfaces/              # 接口层
-│   ├── api/                 FastAPI 管理控制台
-│   │   ├── admin.py         入口
-│   │   ├── context.py       共享上下文
-│   │   ├── routes/          14 个路由模块
-│   │   └── services/        17 个服务模块
-│   └── mcp/                 FastMCP 服务器（14 个工具）
-├── templates/               15 个 Jinja2 模板
-│   ├── base.html           基础模板（侧边栏导航）
-│   ├── dashboard.html      仪表板
-│   ├── chat.html           对话
-│   ├── agents.html         智能体
-│   ├── contracts.html      契约
-│   ├── tokens.html         Token 统计
-│   ├── routing.html        路由分析
-│   ├── skills.html         技能
-│   ├── squads.html         Squad
-│   ├── reports.html        周报
-│   ├── memory.html         记忆
-│   ├── logs.html           日志
-│   ├── knowledge_bases.html 知识库
-│   ├── settings.html       设置
-│   └── login.html          登录
-├── agents/                  18 个智能体定义
-├── skills/                  69 项技能（每项含 SKILL.md）
-├── squads/                  预定义的智能体组合
-├── config/                  settings.py
-├── alembic/                 数据库迁移
-├── scripts/                 种子数据与导入脚本
-│   ├── seed_example_squads.py
-│   ├── import_agents.py
-│   └── import_skills.py
-├── server.py                统一入口（MCP 服务器 / 管理控制台）
-├── pyproject.toml           Python 依赖
-├── tests/                   测试套件（单元测试 41+）
-│   ├── conftest.py          共享 fixtures
-│   ├── unit/                单元测试
-│   ├── functional/          🔜 规划中
-│   ├── integration/         🔜 规划中
-│   ├── performance/         🔜 规划中
-│   └── e2e/                 🔜 规划中
-└── data/
-    ├── sivan.db             SQLite 统一数据库
-    ├── chroma/              ChromaDB 持久化
-    └── models/              ML 模型存储
+infrastructure/persistence/
+├── database.py          # 单例 Engine + QueuePool + WAL mode pragma
+├── connection.py        # SQLiteConnectionManager（单例 + Thread-Local Session）
+├── models.py            # SQLAlchemy Table metadata（用于 metadata.create_all）
+└── agent_repo.py        # 各 Repository 实现（execute/executemany + _CompatRow）
 ```
 
-## 常见开发任务
+关键约定：
+- 表结构在 `sql/*.sql` 中定义，`models.py` 中声明 metadata，`alembic/versions/` 中管理迁移
+- 启动时 `metadata.create_all(engine)` 兜底建表（幂等）
+- 所有 Repository 通过 `SQLiteConnectionManager.execute(sql, params)` 执行裸 SQL
+- 行结果通过 `_CompatRow` 包装，同时支持 `row["column"]` 和 `row[0]` 索引
+- WAL mode + busy_timeout=30000 + 指数退避重试（"database is locked" 自动重试 3 次）
 
-### 添加新智能体
-1. 按照模板结构创建 `agents/{name}.md`
-2. 从现有技能目录中定义可用技能
-3. 设置适当的工具权限（默认限制性）
-4. 将智能体关键词添加到 Orchestrator 的路由表
-5. 测试智能体出现在 MCP 工具中
+### 依赖注入方式
 
-### 创建新技能
-1. 创建 `skills/{技能名称}/SKILL.md`，包含：
-   - 名称和描述
-   - 使用参数提示
-   - 允许工具（最小集）
-   - 实现细节和质量标准
-2. 指定维护智能体
-3. 更新智能体定义以包含该技能
-4. 测试技能调用
+**无 DI 框架**，手动构造：
 
-### 修改路由系统行为
-- **路由策略配置**: 在 `server.py` 中配置使用的路由器类型
-- **权重调整**: 自适应路由器根据历史表现自动调整策略权重
-- **反馈学习**: 通过 `provide_routing_feedback` MCP工具提供反馈，优化路由
-- **数据库查询**: 使用 `routing_analytics` MCP工具查看路由分析数据
-- **策略切换**: 通过 `RoutingService.switch_strategy()` 方法动态切换路由策略
-
-## 测试和验证
-
-### 测试分类
-测试按类型组织在 `tests/` 目录：
-
-1. **单元测试** (`tests/unit/`): 测试核心领域层组件
-   - 路由策略测试（4 种策略全覆盖）
-   - 领域实体序列化/反序列化
-   - 配置模块测试
-   - 回归测试（P0 缺陷验证）
-
-2. **功能测试** (`tests/functional/`) *🔜 规划中*
-   - MCP 工具调用功能验证
-
-3. **集成测试** (`tests/integration/`) *🔜 规划中*
-   - 数据库 + 路由系统集成
-
-4. **性能测试** (`tests/performance/`) *🔜 规划中*
-   - 路由决策性能基准
-
-5. **端到端测试** (`tests/e2e/`) *🔜 规划中*
-   - 完整工作流程测试
-
-### 测试运行
-```bash
-# 运行所有测试
-uv run python -m pytest tests/ -v
-
-# 运行特定类型测试
-uv run python -m pytest tests/unit/ -v
-
-# 运行单个测试文件
-uv run python -m pytest tests/unit/test_routing.py -v
-uv run python -m pytest tests/unit/test_entity.py -v
-uv run python -m pytest tests/unit/test_settings.py -v
+```python
+# 典型 wiring 模式（interfaces/mcp/server.py）
+conn_mgr = SQLiteConnectionManager(str(db_path))
+agent_repo = AgentRepository(conn_mgr)
+domain_svc = DomainRoutingService()
+routing_repo = RoutingRepository(conn_mgr)
+app_svc = RoutingAppService(domain_svc, routing_repo)
 ```
 
-### 智能体验证
-每个智能体都有明确的"退出标准检查表"，必须满足：
-- 领域特定的质量标准（例如，be-dev 需要 80% 测试覆盖率）
-- 安全和性能要求
-- 架构合规性检查
+AppContext 单例（`interfaces/api/context.py`）集中管理 db_path、jinja_env、kb_service 延迟初始化。
 
-### MCP 集成测试
-```bash
-# 启动 MCP 服务器（使用产品级路由系统）
-uv run python server.py
+### 配置体系
 
-# 配置 Claude Desktop
-# 在 Claude Desktop 中，验证工具出现并正确响应
+`config/settings.py` 中 `Settings` 类从环境变量读取所有配置。关键环境变量：
 
-# 测试路由功能:
-# 1. 显式路由: @be-dev:设计用户认证API
-# 2. 隐式路由: "实现登录功能" (使用语义+ML+上下文+自适应混合路由)
-# 3. 路由分析: routing_analytics (查看SQLite数据库统计)
-# 4. 智能体性能: agent_performance be-dev (查看历史表现)
-# 5. 最近决策: recent_routing_decisions (查看最近路由记录)
-# 6. 反馈学习: provide_routing_feedback 1 true (提供路由反馈)
-
-# 关键MCP工具 (共14个):
-# - list_agents: 列出所有可用智能体
-# - call_agent: 调用特定智能体执行任务
-# - orchestrator_route: 智能路由任务到最合适的智能体
-# - create_contract: 创建智能体协作契约
-# - list_contracts: 列出所有契约文件
-# - contract_stats: 契约统计概览
-# - system_status: 获取系统状态信息
-# - routing_analytics: 查看路由分析数据
-# - agent_performance: 查看智能体性能统计
-# - recent_routing_decisions: 查看最近路由决策
-# - provide_routing_feedback: 提供路由反馈以优化系统
-# - search_knowledgebase: 语义搜索知识库
-# - list_knowledgebases: 列出所有知识库
-# - ingest_kb_document: 导入文档到知识库
+```
+SIVAN_DB_PATH       # 数据库路径（默认 data/sivan.db）
+SIVAN_API_KEY       # 管理控制台认证密钥
+MCP_API_KEY         # MCP 服务器认证密钥
+SIVAN_ADMIN_HOST    # 管理控制台主机（默认 127.0.0.1）
+SIVAN_ADMIN_PORT    # 管理控制台端口（默认 8001）
+SIVAN_HF_MIRROR     # HuggingFace 镜像站
 ```
 
-### 管理控制台使用
-```bash
-# 启动管理控制台（Web 界面 + MCP HTTP）
-uv run python server.py
+### FastAPI + MCP 双模式挂载
 
-# 或以 STDIO 模式启动 MCP 服务器（用于 Claude Desktop）
-uv run python server.py --mcp-stdio
-
-# 访问Web界面
-# 打开浏览器访问: http://127.0.0.1:8001
-
-# 3. 主要功能页面
-# - 仪表板: / (系统概览和统计)
-# - 智能体管理: /agents (查看和管理智能体)
-# - 契约管理: /contracts (浏览和搜索契约)
-# - Token统计: /tokens (Token使用分析和成本监控)
-# - 路由分析: /routing (路由决策统计和性能分析)
-# - 技能管理: /skills (69个技能搜索和详情查看)
-# - Squad管理: /squads (Squad编排和执行)
-# - 周报管理: /reports (周报生成和管理)
-
-# 4. API接口
-# - 系统统计: /api/stats
-# - 智能体列表: /api/agents
-# - 契约列表: /api/contracts
-# - Token统计: /api/tokens
-# - 路由统计: /api/routing
-# - Token每日趋势: /api/token-daily
-# - 技能管理: /api/skills, /api/skills/{id}, /api/skills-stats
-# - Squad管理: /api/squads, /api/squads/{id}, /api/squads-stats, /api/squads-sync
-# - Squad执行: /api/squads/{id}/execute
-# - 执行记录: /api/squad-executions, /api/squad-executions/{id}
-# - 周报管理: /api/weekly-reports, /api/weekly-reports/{id}
+```
+server.py → 入口分发
+  ├── --mcp-stdio: 启动纯 MCP STDIO 服务
+  └── 默认: 启动 FastAPI Web 管理控制台
+       └── /mcp/ 路径下挂载 FastMCP HTTP 服务
 ```
 
-## 路由系统技术细节
+### 代码约定
 
-### 1. SQLite数据库架构
-系统使用SQLite数据库存储所有路由决策和相关数据，包含6个核心表：
+- Python 3.13+，所有文件首行 `from __future__ import annotations`
+- 类型注解全覆盖，使用 `|` 联合类型语法（Python 3.10+）
+- Ruff lint 规则集：E/F/W/I/N/UP/S，行宽 120
+- `pickle` 使用在 `infrastructure/ml/classifier.py` 中已知且限定范围，忽略 S301/S403
 
-```sql
--- 路由决策表 (核心表)
-routing_decisions (id, task_description, selected_agent, routing_strategy, status, confidence_score, execution_time_ms, context_json, created_at)
+## 仓库实现约定
 
--- 候选得分表 (记录所有候选智能体得分)
-candidate_scores (id, decision_id, agent_name, score, rank, features_json)
+每个 Repository 接收 `SQLiteConnectionManager` 构造参数。方法命名惯例：
+- `find_by_*` → 返回单条或 None
+- `find_all_*` → 返回列表
+- `save` / `update` / `delete`
+- 无 ORM session 管理，每次调用独立 execute/commit
 
--- 用户反馈表 (记录用户对路由决策的反馈)
-user_feedback (id, decision_id, feedback_type, corrected_agent, feedback_text, rating, created_at)
+Repository 位于 `infrastructure/persistence/`，接口定义在 `domain/*/repository.py`。
 
--- 智能体性能表 (聚合性能指标)
-agent_performance (agent_name, total_tasks, success_count, avg_confidence, avg_execution_time_ms, last_updated)
+## 未完成的测试目录
 
--- 策略性能表 (各路由策略性能跟踪)
-strategy_performance (strategy_name, total_decisions, success_rate, avg_confidence, avg_execution_time_ms, feedback_correct_rate, weight)
+以下测试目录已有 `__init__.py` 但无实际测试文件：
+- `tests/functional/`
+- `tests/integration/`
+- `tests/performance/`
+- `tests/e2e/`
 
--- 关键词特征表 (语义路由学习)
-keyword_features (keyword, agent_name, occurrence_count, success_rate, last_used)
-```
+当前只有 `tests/unit/` 下有实际测试（test_routing.py, test_entity.py, test_settings.py，共 41 个）。
 
-### 2. 路由策略实现
+## 当前工作树状态
 
-#### 语义路由器 (`domain/routing/strategy.py` → `SemanticRouter`)
-- **中文分词**: 使用jieba进行中文文本分词
-- **同义词扩展**: 内置同义词库，扩展匹配范围
-- **特征权重**: 基于历史成功率动态调整关键词权重
-- **意图分析**: 识别任务的技术、业务、UI等不同领域
+- 分支: `main`
+- 有未提交的修改（agent_resolver, feedback_learner, routing strategy, agent/skill repos, MCP server, SQL schemas）
+- 新增一个 `add_agent_type.py` alembic 迁移（未跟踪）
+- 最近的提交是 `f9b993b feat: add default settings seed data to settings.sql`
 
-#### ML路由器 (`domain/routing/strategy.py` → `MLRouter`)
-- **特征提取**: TF-IDF向量化，支持unigram和bigram
-- **集成分类器**: 组合Naive Bayes、Logistic Regression、Random Forest
-- **模型持久化**: 训练好的模型保存到文件，支持增量训练
-- **自动重新训练**: 当新数据增长50%或超过7天时自动重新训练
+## 重要约束
 
-#### 上下文感知路由器 (`domain/routing/strategy.py` → `ContextAwareRouter`)
-- **8个上下文维度**: 任务复杂度、领域、用户专业水平、时间约束、协作需求、质量要求、安全要求、会话上下文
-- **智能体画像**: 为每个智能体建立上下文偏好和成功率画像
-- **实时学习**: 从每次路由决策中更新上下文知识
-
-#### 自适应路由器 (`domain/routing/strategy.py` → `AdaptiveRouter`)
-- **动态权重**: 基于成功率(60%)、置信度(20%)、执行时间(10%)、反馈正确率(10%)计算权重
-- **衰减因子**: 鼓励使用新策略，防止老策略垄断
-- **后备策略**: 当所有策略失败时，使用最可靠策略或最常用智能体
-
-#### 集成路由 (`domain/routing/service.py` → `RoutingService`)
-- **统一管理**: 通过 `DomainRoutingService` 管理所有路由策略，提供统一接口
-- **策略切换**: 通过 `switch_strategy()` 动态切换当前使用的路由策略
-- **综合分析**: `analyze_task()` 获取所有策略的分析结果和共识智能体
-
-### 3. 学习机制
-- **反馈学习**: 用户可以通过MCP工具提供路由反馈
-- **权重调整**: 自适应路由器根据反馈调整策略权重
-- **特征更新**: 语义路由器根据纠正结果更新关键词特征
-- **模型重训**: ML路由器在数据积累后自动重新训练
-
-### 4. 分析功能
-- **实时统计**: 路由成功率、平均执行时间、置信度分布
-- **策略对比**: 各路由策略的性能对比分析
-- **智能体分析**: 每个智能体的历史表现和趋势
-- **时间序列**: 按时间维度的路由决策分析
-
-## 重要注意事项
-
-### 路由系统特性
-- **产品级实现**: 所有路由策略均为生产就绪的实现
-- **数据持久化**: 所有路由决策存储在SQLite数据库中
-- **实时学习**: 从用户反馈中动态调整路由策略
-- **多策略融合**: 4种路由策略协同工作，自适应选择最佳策略
-- **完整监控**: 详细的性能分析和报告功能
-
-### 技术栈
-- **数据库**: SQLite (轻量级，无需额外服务)
-- **ML框架**: scikit-learn (TF-IDF + 集成分类器)
-- **中文处理**: jieba (中文分词)
-- **MCP框架**: FastMCP (Model Context Protocol)
-- **架构模式**: SLOID原则 + 设计模式
-
-### 扩展性
-- **新路由策略**: 实现 `IRoutingStrategy` 接口即可添加新策略
-- **数据库扩展**: SQLite表结构设计支持扩展新功能
-- **智能体扩展**: 通过工厂模式添加新智能体类型
-- **技能扩展**: 模块化技能设计，支持动态添加
-
-### 性能考虑
-- **数据库索引**: 关键字段已建立索引，优化查询性能
-- **模型缓存**: ML模型持久化存储到 `data/models/` 目录，避免重复训练
-- **内存管理**: 历史数据限制，防止内存泄漏
-- **并发安全**: SQLite连接管理，支持并发访问
-- **模型目录**: 自动创建的 `data/models/` 目录存储训练好的ML模型文件
-
-系统设计具有高度可扩展性：可以添加新的智能体、技能和路由策略，而无需修改核心架构，遵循已建立的SLOID原则和设计模式。
+- **domain 层绝不能 import infrastructure 或 interfaces 层的任何东西**
+- **智能体和技能定义存储在 SQLite 数据库中**（agents 表、skills 表），通过 `scripts/import_agents.py` 和 `scripts/import_skills.py` 从 markdown 文件导入。`agents/*.md` 和 `skills/*/SKILL.md` 仅供人类阅读，系统不从文件读取
+- `SQLiteConnectionManager` 是全局单例，测试中通过 `reset_instance()` 重置
+- MCP 服务器和 FastAPI Web 共享同一个数据库，通过 WAL mode 处理并发
+- 模型文件和 ChromaDB 持久化存储在 `data/` 下，对运行时非必需（自动重建）

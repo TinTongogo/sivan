@@ -40,3 +40,7 @@ class AgentService:
 
     def reload_all(self) -> None:
         self._repo.reload_all()
+
+    def get_agent_type(self, agent_id: str) -> str | None:
+        """获取智能体类型（user / dynamic）。"""
+        return self._repo.get_agent_type(agent_id)

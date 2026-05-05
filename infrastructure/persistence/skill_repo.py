@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from domain.skill.repository import ISkillRepository
@@ -69,7 +70,6 @@ class SkillRepository(ISkillRepository):
             self._skills[skill.skill_id] = skill
 
     def _row_to_skill(self, row) -> Skill:
-        import json
         allowed_tools_str = row["allowed_tools"]
         allowed_tools: list[str] = []
         if allowed_tools_str:

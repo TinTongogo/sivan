@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -11,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from interfaces.api.services.base import _connect
+
+logger = logging.getLogger(__name__)
 
 
 def get_squads_list(db_path: str | Path) -> list[dict[str, Any]]:
@@ -395,15 +398,20 @@ def _resolve_agent_repo(db_path: str | Path):
 
 
 def call_agent_for_squad(agent_name: str, task: str, context: dict) -> str:
-    """调用单个智能体（Squad 执行用）。"""
+    """调用单个智能体（Squad 执行用）。
+
+    system 类型智能体（如 orchestrator）是系统内置调度层，
+    始终在内存中，不需要也不应该通过 DB reload。
+    """
     from interfaces.mcp.server import get_system
     system = get_system()
     if system:
         try:
-            # 确保智能体在全局缓存中
-            loaded = system.agent_service.reload(agent_name)
-            if not loaded:
-                logger.warning("call_agent_for_squad: agent '%s' 不在 DB 中，无法加载", agent_name)
+            # orchestrator 始终在内存中，跳过 reload
+            if agent_name != "orchestrator":
+                loaded = system.agent_service.reload(agent_name)
+                if not loaded:
+                    logger.warning("call_agent_for_squad: agent '%s' 不在 DB 中，无法加载", agent_name)
             return system.agent_service.execute(agent_name, task, context)
         except Exception as e:
             return json.dumps({"agent": agent_name, "status": "error", "error": str(e)})
@@ -1330,11 +1338,14 @@ def execute_dynamic_squad(
         # 新创建的 agent 只写入了 DB 和 AgentResolver 私有缓存，
         # 但 call_agent_for_squad 使用的是全局 SystemContext.agent_service，
         # 两者是不同的 AgentRepository 实例，必须同步过去。
+        # orchestrator 始终在全局缓存中，不需要同步。
         try:
             from interfaces.mcp.server import get_system
             system = get_system()
             for phase_def in phases:
                 for aid in phase_def.get("agents", []):
+                    if aid == "orchestrator":
+                        continue
                     ok = system.agent_service.reload(aid)
                     if not ok:
                         logger.warning("execute_dynamic_squad: agent '%s' 同步到全局缓存失败（DB 中不存在）", aid)

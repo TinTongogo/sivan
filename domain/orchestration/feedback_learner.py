@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 from typing import Any
@@ -44,7 +45,6 @@ class TopologyFeedbackLearner:
         Returns:
             int: 记录 ID
         """
-        import json
         topology_str = json.dumps(topology, ensure_ascii=False)
         self._db.execute(
             """INSERT INTO topology_feedback
@@ -75,7 +75,6 @@ class TopologyFeedbackLearner:
         ).fetchall()
         if not rows:
             return None
-        import json
         try:
             topology = json.loads(rows[0]["topology"])
             topology["from_feedback"] = True
@@ -103,7 +102,6 @@ class TopologyFeedbackLearner:
 
     def list_recent(self, limit: int = 20) -> list[dict[str, Any]]:
         """列出最近的反馈记录。"""
-        import json
         rows = self._db.execute(
             """SELECT id, task_signature, topology, satisfaction, execution_id, created_at
                FROM topology_feedback ORDER BY created_at DESC LIMIT ?""",

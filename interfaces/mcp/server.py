@@ -135,9 +135,15 @@ class SystemContext:
         self._register_agents()
 
     def _register_agents(self) -> None:
-        """将可用智能体注册到路由系统。"""
+        """将可用智能体注册到路由系统。
+
+        注：orchestrator 是系统代码层调度器，不注册到路由，
+        避免路由决策将其选中执行领域任务。
+        """
         agents = self._agent_repo.find_all_active()
         for agent_name, agent in agents.items():
+            if agent_name == "orchestrator":
+                continue
             capabilities = agent.get_capabilities()
             self.routing_service.add_agent(agent_name, capabilities)
 

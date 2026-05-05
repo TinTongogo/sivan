@@ -76,7 +76,7 @@ class OpenAIProvider(BaseLLMProvider):
     def chat(self, messages: list[dict], stream_callback=None, reasoning_callback=None) -> ChatResult:
         client = self._build_client()
         cfg = self._config
-        model = cfg.get("model") or "gpt-4o-mini"
+        model = cfg.get("model")
         max_tokens = int(cfg.get("max_tokens", 0)) or 4096
         temperature = float(cfg.get("temperature", 0.7))
 
@@ -158,9 +158,17 @@ class OpenAIProvider(BaseLLMProvider):
     def test_connection(self) -> dict[str, Any]:
         cfg = self._config
         name = cfg.get("name", "?")
-        model = cfg.get("model") or "gpt-4o-mini"
+        model = cfg.get("model")
         try:
             client = self._build_client()
+            # 先尝试列出模型 — 不依赖具体模型是否存在，验证 API 连通性即可
+            try:
+                models = client.models.list()
+                available = [m.id for m in models][:5]
+                return {"success": True, "provider": name, "models_available": available}
+            except OpenAIAPIError:
+                pass
+            # 回退：发一个最简 chat 请求验证连通性
             resp = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": "Hello, respond with exactly: OK"}],

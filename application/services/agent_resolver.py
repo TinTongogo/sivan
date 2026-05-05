@@ -258,13 +258,13 @@ class AgentResolver:
                    (agent_id, display_name, description, category,
                     system_prompt, craft_declaration,
                     tools, skill_ids,
-                    version, status, created_by)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    version, status, created_by, agent_type)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     agent_id, display_name, description, "auto-created",
                     system_prompt, "",
                     "[]", skill_ids_json,
-                    "1.0.0", "active", "agent_resolver",
+                    "1.0.0", "active", "agent_resolver", "dynamic",
                 ),
             )
             conn.commit()

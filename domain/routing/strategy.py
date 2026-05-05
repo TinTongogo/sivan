@@ -209,7 +209,7 @@ class SemanticRouter(IRoutingStrategy):
                 best_score = s
                 best_agent = agent_name
 
-        return best_agent
+        return best_agent if best_score > 0 else None
 
 
 # ================================================================
@@ -594,10 +594,8 @@ class AdaptiveRouter(IRoutingStrategy):
     # ---- 后备策略 ----
 
     def _fallback(self) -> str | None:
-        """后备：所有子策略均未命中时，返回最后注册的智能体。"""
-        if not self._agents:
-            return None
-        return list(self._agents.keys())[-1]
+        """后备：所有子策略均未命中时返回 None，由上层降级到 orchestrator。"""
+        return None
 
     def route(self, task_description: str, context: dict[str, Any]) -> str | None:
         if not self._strategies:

@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -13,6 +15,23 @@ from domain.task.entity import Task
 from infrastructure.agents.generic_agent import AgentConfig, GenericAgent
 from infrastructure.agents.orchestrator import OrchestratorAgent
 from infrastructure.persistence.connection import SQLiteConnectionManager
+
+logger = logging.getLogger("sivan.agent_repo")
+
+# orchestrator 默认记录（seed data 未导入时的自愈用）
+_ORCHESTRATOR_SEED = {
+    "agent_id": "orchestrator",
+    "display_name": "乐团指挥",
+    "description": "系统内置编排调度智能体（OrchestratorAgent）",
+    "category": "core",
+    "system_prompt": "",
+    "craft_declaration": "",
+    "tools": '["read_file", "send_message", "load_skill", "task_create", "task_update"]',
+    "skill_ids": '["agent-routing", "task-decomposition", "resource-locking", "capability-inheritance"]',
+    "status": "active",
+    "version": "1.0.0",
+    "agent_type": "user",
+}
 
 
 class AgentRepository(IAgentRepository):
@@ -45,9 +64,27 @@ class AgentRepository(IAgentRepository):
             else:
                 agent = self._GenericAgent(config, self._db.connection, kb_service=self._kb_service)
             self._agents[agent_id] = agent
+        # orchestrator 是系统内置调度层，始终确保可用
+        if "orchestrator" not in self._agents:
+            logger.warning("orchestrator 不在 DB 中，写入默认记录")
+            seed = dict(_ORCHESTRATOR_SEED)
+            self._db.execute(
+                """INSERT INTO agents
+                   (agent_id, display_name, description, category, system_prompt,
+                    craft_declaration, tools, skill_ids, status, version, agent_type)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                tuple(seed.values()),
+            )
+            self._db.commit()
+            row = self._db.execute(
+                "SELECT * FROM agents WHERE agent_id = 'orchestrator'"
+            ).fetchone()
+            config = self._row_to_config(row)
+            self._agents["orchestrator"] = self._OrchestratorAgent(
+                config, self._db.connection
+            )
 
     def _row_to_config(self, row) -> Any:
-        import json
         def _safe_json(val: str | None) -> list:
             if not val or not val.strip():
                 return []
@@ -63,6 +100,7 @@ class AgentRepository(IAgentRepository):
             craft_declaration=row["craft_declaration"] or "",
             tools=_safe_json(row["tools"]),
             skill_ids=_safe_json(row["skill_ids"]),
+            agent_type=row.get("agent_type", "user"),
         )
 
     def find_by_id(self, agent_id: str) -> dict[str, Any] | None:
@@ -77,13 +115,36 @@ class AgentRepository(IAgentRepository):
     def find_all_active(self) -> dict[str, Any]:
         return {aid: agent for aid, agent in self._agents.items()}
 
+    def get_agent_type(self, agent_id: str) -> str | None:
+        """获取智能体类型（user / dynamic）。"""
+        agent = self._agents.get(agent_id)
+        if agent and hasattr(agent, "agent_config"):
+            return agent.agent_config.agent_type
+        return None
+
     def reload(self, agent_id: str) -> bool:
         row = self._db.execute(
             "SELECT * FROM agents WHERE agent_id = ? AND status = 'active'",
             (agent_id,),
         ).fetchone()
         if not row:
-            return False
+            # orchestrator DB 记录缺失时自愈写入
+            if agent_id == "orchestrator":
+                logger.warning("orchestrator 不在 DB 中，写入默认记录（reload 触发）")
+                seed = dict(_ORCHESTRATOR_SEED)
+                self._db.execute(
+                    """INSERT INTO agents
+                       (agent_id, display_name, description, category, system_prompt,
+                        craft_declaration, tools, skill_ids, status, version, agent_type)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    tuple(seed.values()),
+                )
+                self._db.commit()
+                row = self._db.execute(
+                    "SELECT * FROM agents WHERE agent_id = 'orchestrator'"
+                ).fetchone()
+            else:
+                return False
         config = self._row_to_config(row)
         if agent_id == "orchestrator":
             self._agents[agent_id] = self._OrchestratorAgent(config, self._db.connection)

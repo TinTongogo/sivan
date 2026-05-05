@@ -23,6 +23,7 @@ class AgentConfig:
     craft_declaration: str = ""
     tools: list[str] = field(default_factory=list)
     skill_ids: list[str] = field(default_factory=list)
+    agent_type: str = "user"  # user / dynamic
 
 
 class GenericAgent(BaseAgent):
